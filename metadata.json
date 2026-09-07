@@ -1,0 +1,6 @@
+{
+  "name": "The Automated Insight Analyst",
+  "description": "Autonomous end-to-end dashboard engine that cleans raw tabular data, detects column types, applies machine learning (correlation, clustering, outlier detection), auto-generates charts, and delivers plain-language executive insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
