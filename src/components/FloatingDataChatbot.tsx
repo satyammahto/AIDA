@@ -38,6 +38,7 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastDatasetNameRef = useRef<string>("");
 
   // Suggested friendly, beginner-accessible prompts
   const suggestedPrompts = [
@@ -49,16 +50,19 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
   ];
 
   useEffect(() => {
-    if (dataset && messages.length === 0) {
-      setMessages([
-        {
-          id: "welcome",
-          sender: "bot",
-          text: `Hello! I am your Plain-English Data Assistant for "${dataset.name}". I have checked and cleaned ${dataset.cleanedRows.length} rows across ${dataset.columns.length} columns. You don't need any technical background to talk with me—ask me anything like "What should our business focus on?" or "Explain the main charts in plain words"!`,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          source: "Plain-English Assistant",
-        },
-      ]);
+    if (dataset) {
+      if (lastDatasetNameRef.current !== dataset.name) {
+        lastDatasetNameRef.current = dataset.name;
+        setMessages([
+          {
+            id: "welcome-" + Date.now(),
+            sender: "bot",
+            text: `Hello! I am your Plain-English Data Assistant for "${dataset.name}". I have checked and cleaned ${dataset.cleanedRows.length} rows across ${dataset.columns.length} columns. You don't need any technical background to talk with me—ask me anything like "What should our business focus on?" or "Explain the main charts in plain words"!`,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            source: "Plain-English Assistant",
+          },
+        ]);
+      }
     }
   }, [dataset]);
 
@@ -90,6 +94,9 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: q,
+          conversationHistory: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
+          summary: dataset.summary,
+          cleaningAudit: dataset.audit,
           datasetProfile: {
             datasetName: dataset.name,
             totalRows: dataset.cleanedRows.length,
@@ -109,12 +116,22 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
                 acc[c.name] = { mean: c.mean, sum: c.sum, stdDev: c.stdDev, min: c.min, max: c.max };
                 return acc;
               }, {} as Record<string, any>),
+            categoryTopCounts: dataset.columns
+              .filter((c) => c.type === "categorical" && c.topCategories)
+              .reduce((acc, c) => {
+                acc[c.name] = (c.topCategories || []).reduce((m, item) => {
+                  m[item.value] = item.count;
+                  return m;
+                }, {} as Record<string, number>);
+                return acc;
+              }, {} as Record<string, any>),
           },
           mlInsights: {
             clusters: dataset.ml.clusters,
             correlations: dataset.ml.correlations.slice(0, 5),
             outlierCount: dataset.ml.outlierCount,
             outlierRatio: dataset.ml.outlierRatio,
+            outliers: dataset.ml.outliers.slice(0, 3),
           },
           sampleRows: dataset.cleanedRows.slice(0, 5),
         }),
@@ -129,7 +146,7 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
             sender: "bot",
             text: data.answer || "No response received.",
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            source: data.source || "Groq AI",
+            source: data.source || "Analyst Engine",
           },
         ]);
       } else {
@@ -145,7 +162,7 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
           sender: "bot",
           text: fallbackText,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          source: "Deterministic Engine",
+          source: "Evidence Engine",
         },
       ]);
     } finally {
@@ -342,25 +359,160 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
 
 // Grounded local deterministic insight fallback
 function generateLocalEvidenceAnswer(question: string, dataset: ProcessedDataset): string {
-  const q = question.toLowerCase();
+  const q = question.toLowerCase().trim();
   const numericCols = dataset.columns.filter((c) => c.type === "numeric");
+  const primary = numericCols[0];
+  const primaryName = primary?.name || "Metric";
+  const primarySum = primary?.sum || 0;
+  const primaryMean = primary?.mean || 0;
+  const primaryMax = primary?.max || 0;
+  const primaryMin = primary?.min || 0;
   const topCorr = dataset.ml.correlations[0];
+  const clusters = dataset.ml.clusters;
+  const recs = dataset.summary?.actionableRecommendations || [];
+  const findings = dataset.summary?.keyFindings || [];
 
-  if (q.includes("correlation") || q.includes("relationship") || q.includes("depend")) {
+  // 1. Takeaway / Main finding / Core message / Headline / TLDR / Key
+  if (
+    q.includes("takeaway") ||
+    q.includes("main finding") ||
+    q.includes("important") ||
+    q.includes("headline") ||
+    q.includes("core") ||
+    q.includes("tldr") ||
+    q.includes("key point") ||
+    q.includes("conclusion")
+  ) {
+    const lead = dataset.summary?.executiveHeadline || "Positive operational momentum detected across validated rows";
+    const topF = findings[0] ? ` ${findings[0].title}: ${findings[0].finding}` : "";
+    return `Single Most Important Takeaway:\n${lead}.${topF}\n\nKey Strategic Driver: Prioritize the dominant segment ("${clusters[0]?.name || primaryName}", representing ${clusters[0]?.percentage || 'majority'}% of records) to maximize operational performance.`;
+  }
+
+  // 2. Simple words / Everyday terms / Beginner explanation / Walk me through
+  if (
+    q.includes("simple") ||
+    q.includes("everyday") ||
+    q.includes("explain this file") ||
+    q.includes("explain") ||
+    q.includes("walk me through") ||
+    q.includes("what is this") ||
+    q.includes("plain english") ||
+    q.includes("beginner") ||
+    q.includes("overview")
+  ) {
+    const segText = clusters.length > 0
+      ? `Shoppers and records naturally partition into ${clusters.length} groups, led by "${clusters[0].name}" (${clusters[0].percentage}% of total activity).`
+      : "";
+    const corrText = topCorr
+      ? ` Also, higher ${topCorr.colA} correlates with ${topCorr.coefficient > 0 ? "higher" : "lower"} ${topCorr.colB}.`
+      : "";
+    return `In simple words, think of "${dataset.name}" as a verified digital ledger with ${dataset.cleanedRows.length.toLocaleString()} clean rows. For ${primaryName}, the typical average per entry is ${primaryMean.toLocaleString(undefined, { maximumFractionDigits: 1 })}, spanning from ${primaryMin.toLocaleString()} to ${primaryMax.toLocaleString()}. ${segText}${corrText} Overall data cleanliness is verified at ${dataset.audit.cleanedHealthScore}%.`;
+  }
+
+  // 3. Strategic Action / Recommendations / Next steps / Concrete steps
+  if (
+    q.includes("recommend") ||
+    q.includes("action") ||
+    q.includes("next step") ||
+    q.includes("step") ||
+    q.includes("concrete") ||
+    q.includes("what should") ||
+    q.includes("strategy") ||
+    q.includes("focus") ||
+    q.includes("decision")
+  ) {
+    if (recs && recs.length > 0) {
+      const list = recs.map((r, i) => `${i + 1}. ${r}`).join("\n");
+      return `Recommended Strategic Actions for "${dataset.name}":\n${list}`;
+    }
+    return `Recommended Strategic Actions:\n1. Focus campaign budget and resources on "${clusters[0]?.name || 'Primary Segment'}" (${clusters[0]?.percentage || 0}% share).\n2. Review and audit the ${dataset.ml.outlierCount} flagged outlier entries.\n3. Expand product bundles around top positive correlation drivers.`;
+  }
+
+  // 4. Best / Top / Performing / Winners / Leader / Categories
+  if (
+    q.includes("best") ||
+    q.includes("top") ||
+    q.includes("highest") ||
+    q.includes("leader") ||
+    q.includes("performing") ||
+    q.includes("winner") ||
+    q.includes("peak") ||
+    q.includes("maximum") ||
+    q.includes("max")
+  ) {
+    const colMatch = dataset.columns.find((c) => c.type === "numeric" && q.includes(c.name.toLowerCase()));
+    if (colMatch) {
+      return `Top Performance for "${colMatch.name}":\n• Maximum Value: ${(colMatch.max || 0).toLocaleString()}\n• Average Value: ${(colMatch.mean || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}\n• Cumulative Total: ${(colMatch.sum || 0).toLocaleString()}`;
+    }
+
+    const catCol = dataset.columns.find((c) => c.type === "categorical" && c.topCategories && c.topCategories.length > 0);
+    if (catCol && catCol.topCategories) {
+      const topCat = catCol.topCategories[0];
+      if (topCat) {
+        return `Top Performing Highlights:\n• Leading Category in ${catCol.name}: "${topCat.value}" with ${topCat.count.toLocaleString()} occurrences (${topCat.percentage}%).\n• Highest Activity Segment: "${clusters[0]?.name || 'Segment 1'}" (${clusters[0]?.size || 0} records, ${clusters[0]?.percentage || 0}% share).\n• Peak ${primaryName}: ${primaryMax.toLocaleString()}.`;
+      }
+    }
+
+    return `Top Performing Highlights:\n• Leading Segment: "${clusters[0]?.name || 'Segment 1'}" with ${clusters[0]?.percentage || 0}% share.\n• Highest Recorded ${primaryName}: ${primaryMax.toLocaleString()} (Mean: ${primaryMean.toLocaleString(undefined, { maximumFractionDigits: 1 })}).`;
+  }
+
+  // 5. Worst / Lowest / Minimum / Least / Smallest / Bottom
+  if (
+    q.includes("worst") ||
+    q.includes("lowest") ||
+    q.includes("least") ||
+    q.includes("minimum") ||
+    q.includes("min") ||
+    q.includes("bottom") ||
+    q.includes("underperform")
+  ) {
+    const colMatch = dataset.columns.find((c) => c.type === "numeric" && q.includes(c.name.toLowerCase()));
+    const target = colMatch || primary;
+    const smallestCluster = clusters.length > 1 ? clusters[clusters.length - 1] : null;
+
+    return `Lowest Baseline Metrics:\n• Minimum ${target?.name || primaryName}: ${(target?.min ?? 0).toLocaleString()}\n• Mean Baseline: ${(target?.mean || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}\n${smallestCluster ? `• Smallest Segment: "${smallestCluster.name}" (${smallestCluster.size} records, ${smallestCluster.percentage}% share).` : ""}`;
+  }
+
+  // 6. Correlations / Relationships / Influence
+  if (
+    q.includes("correlation") ||
+    q.includes("relationship") ||
+    q.includes("depend") ||
+    q.includes("link") ||
+    q.includes("connection") ||
+    q.includes("influence")
+  ) {
     if (topCorr) {
-      return `The strongest statistical association is between ${topCorr.colA} and ${topCorr.colB} with Pearson r = ${topCorr.coefficient > 0 ? "+" : ""}${topCorr.coefficient} (${topCorr.strength} ${topCorr.direction} correlation).\n\nCaveat: This indicates a mutual statistical relationship, not direct causation.`;
+      return `The strongest statistical association is between ${topCorr.colA} and ${topCorr.colB} with Pearson r = ${topCorr.coefficient > 0 ? "+" : ""}${topCorr.coefficient} (${topCorr.strength} ${topCorr.direction} correlation).\n\nKey Takeaway: ${topCorr.insight || 'This indicates a significant mutual association between the metrics.'}`;
     }
     return "No strong linear correlation (Pearson |r| > 0.4) was detected across the numeric dimensions.";
   }
 
-  if (q.includes("cluster") || q.includes("segment")) {
-    const list = dataset.ml.clusters
-      .map((c) => `• ${c.name}: ${c.size} records (${c.percentage}%), marked by ${c.topCharacteristics.slice(0, 2).join(" & ")}`)
+  // 7. Clusters / Groups / Segments / Audience
+  if (
+    q.includes("cluster") ||
+    q.includes("segment") ||
+    q.includes("group") ||
+    q.includes("cohort") ||
+    q.includes("audience") ||
+    q.includes("category")
+  ) {
+    const list = clusters
+      .map((c) => `• ${c.name}: ${c.size.toLocaleString()} records (${c.percentage}%), marked by ${c.topCharacteristics.slice(0, 2).join(" & ")}`)
       .join("\n");
-    return `K-Means clustering partitioned the dataset into ${dataset.ml.clusters.length} distinct operational clusters:\n${list}`;
+    return `K-Means clustering partitioned the dataset into ${clusters.length} distinct operational clusters:\n${list}`;
   }
 
-  if (q.includes("outlier") || q.includes("anomal")) {
+  // 8. Outliers / Anomalies / Unusual / Mistakes / Errors
+  if (
+    q.includes("outlier") ||
+    q.includes("anomal") ||
+    q.includes("unusual") ||
+    q.includes("mistake") ||
+    q.includes("error") ||
+    q.includes("strange") ||
+    q.includes("standout")
+  ) {
     if (dataset.ml.outlierCount === 0) {
       return "Zero statistical outliers were identified. All numeric records fall within 2.5 standard deviations / 1.5x IQR boundaries.";
     }
@@ -368,17 +520,48 @@ function generateLocalEvidenceAnswer(question: string, dataset: ProcessedDataset
     return `An anomaly audit identified ${dataset.ml.outlierCount} records (${dataset.ml.outlierRatio}) exceeding 2.5 standard deviations or 1.5x IQR. Example finding: ${sampleReason}.`;
   }
 
-  if (q.includes("clean") || q.includes("quality") || q.includes("hygiene")) {
+  // 9. Cleaning / Hygiene / Quality / Health / Duplicates / Missing
+  if (
+    q.includes("clean") ||
+    q.includes("quality") ||
+    q.includes("hygiene") ||
+    q.includes("health") ||
+    q.includes("missing") ||
+    q.includes("duplicate") ||
+    q.includes("normalize")
+  ) {
     return `Automated hygiene raised the data health score from ${dataset.audit.rawHealthScore}% to ${dataset.audit.cleanedHealthScore}%. This resolved ${dataset.audit.missingValuesImputed} null cells, removed ${dataset.audit.duplicatesRemoved} duplicate rows, and standardized ${dataset.audit.formatsNormalized} format inconsistencies.`;
   }
 
-  if (q.includes("recommend") || q.includes("action") || q.includes("next step")) {
-    const recs = dataset.summary.actionableRecommendations
-      .map((r, i) => `${i + 1}. ${r}`)
-      .join("\n");
-    return `Recommended Strategic Actions:\n${recs}`;
+  // 10. Columns / Fields / Structure / Attributes
+  if (
+    q.includes("column") ||
+    q.includes("field") ||
+    q.includes("attribute") ||
+    q.includes("dimension") ||
+    q.includes("schema") ||
+    q.includes("structure")
+  ) {
+    const list = dataset.columns.map((c) => `• ${c.name} (${c.type}${c.distinctCount ? `, ${c.distinctCount} unique` : ""})`).join("\n");
+    return `Dataset Architecture for "${dataset.name}":\nTotal Columns: ${dataset.columns.length}\n${list}`;
   }
 
-  const primary = numericCols[0];
-  return `Dataset Overview for "${dataset.name}":\n• Validated Rows: ${dataset.cleanedRows.length.toLocaleString()}\n• Detected Attributes: ${dataset.columns.length} columns (${dataset.columns.map((c) => c.name).slice(0, 4).join(", ")})\n• Primary Metric: ${primary?.name || "N/A"} (Cumulative: ${(primary?.sum || 0).toLocaleString()}, Mean: ${(primary?.mean || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })})\n• Health Score: ${dataset.audit.cleanedHealthScore}%`;
+  // 11. Specific Column Inquiry
+  for (const col of dataset.columns) {
+    if (q.includes(col.name.toLowerCase())) {
+      if (col.type === "numeric") {
+        return `Statistical Profile for "${col.name}":\n• Cumulative Sum: ${(col.sum || 0).toLocaleString()}\n• Mean Average: ${(col.mean || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}\n• Range: ${(col.min || 0).toLocaleString()} (Min) to ${(col.max || 0).toLocaleString()} (Max)\n• Standard Deviation: ${(col.stdDev || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}`;
+      }
+      if (col.topCategories && col.topCategories.length > 0) {
+        const top3 = col.topCategories.slice(0, 3).map((item) => `${item.value} (${item.count.toLocaleString()})`).join(", ");
+        return `Categorical Profile for "${col.name}":\n• Unique Count: ${col.distinctCount}\n• Top Values: ${top3}`;
+      }
+    }
+  }
+
+  // 12. Dynamic Contextual Summary
+  const clText = clusters[0] ? ` The primary cluster is "${clusters[0].name}" (${clusters[0].percentage}% share).` : "";
+  const crText = topCorr ? ` Noteworthy correlation: ${topCorr.colA} and ${topCorr.colB} (r = ${topCorr.coefficient}).` : "";
+
+  return `Analysis for "${dataset.name}": Covering ${dataset.cleanedRows.length.toLocaleString()} verified rows across ${dataset.columns.length} columns. For ${primaryName}, the cumulative total is ${primarySum.toLocaleString()} with a mean of ${primaryMean.toLocaleString(undefined, { maximumFractionDigits: 1 })}.${clText}${crText}\n\nYou can also ask: "What is the single most important takeaway?", "Which group is performing best?", or "What should our team do next?"`;
 }
