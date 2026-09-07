@@ -39,13 +39,13 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Suggested prompts based on dataset context
+  // Suggested friendly, beginner-accessible prompts
   const suggestedPrompts = [
-    "What is the strongest correlation finding?",
-    "Describe the clusters identified by K-Means",
-    "Which records were flagged as anomalies?",
-    "What data cleaning actions were applied?",
-    "What are the top actionable recommendations?",
+    "Explain this file to me in simple everyday words",
+    "What is the single most important takeaway?",
+    "Which group or category is performing best?",
+    "Did you find any unusual records or mistakes?",
+    "What concrete steps should my team take first?",
   ];
 
   useEffect(() => {
@@ -54,9 +54,9 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
         {
           id: "welcome",
           sender: "bot",
-          text: `Hello! I am your Automated Data Analyst for "${dataset.name}". I have analyzed ${dataset.cleanedRows.length} cleaned rows across ${dataset.columns.length} columns with an overall health score of ${dataset.audit.cleanedHealthScore}%. Ask me anything about correlations, clusters, anomalies, or KPIs!`,
+          text: `Hello! I am your Plain-English Data Assistant for "${dataset.name}". I have checked and cleaned ${dataset.cleanedRows.length} rows across ${dataset.columns.length} columns. You don't need any technical background to talk with me—ask me anything like "What should our business focus on?" or "Explain the main charts in plain words"!`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          source: "Autonomous Analyst",
+          source: "Plain-English Assistant",
         },
       ]);
     }
@@ -129,7 +129,7 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
             sender: "bot",
             text: data.answer || "No response received.",
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            source: "Gemini AI",
+            source: data.source || "Groq AI",
           },
         ]);
       } else {
@@ -191,8 +191,8 @@ export const FloatingDataChatbot: React.FC<FloatingDataChatbotProps> = ({
                   <h3 className="text-xs font-bold text-white tracking-wide">
                     Automated Data Analyst
                   </h3>
-                  <span className="text-[9px] font-semibold bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded border border-indigo-500/30">
-                    Live
+                  <span className="text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-500/30">
+                    AI Active
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-300 truncate max-w-[220px]">

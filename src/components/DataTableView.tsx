@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   CheckCircle2,
   RefreshCw,
+  Table as TableIcon,
 } from "lucide-react";
 import { ProcessedDataset } from "../types";
 
@@ -62,15 +63,16 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ dataset, onExportC
 
   return (
     <div className="space-y-4">
-      {/* SECTION 05: Controls & Header Bar */}
+      {/* Controls & Header Bar */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <span className="text-indigo-600 font-bold">05</span> RAW & ENRICHED RECORDS
+              <TableIcon className="h-4 w-4 text-indigo-600" />
+              Browse Data Records
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Inspect tabular transformations, missing value imputations, assigned K-Means clusters, and anomaly severity tags.
+              Search, filter, and inspect your table. Every row here is cleaned, standardized, and ready for Excel.
             </p>
           </div>
 
@@ -88,7 +90,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ dataset, onExportC
               }`}
             >
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-              Cleaned & ML Enriched ({dataset.cleanedRows.length})
+              Cleaned Data ({dataset.cleanedRows.length} rows)
             </button>
             <button
               onClick={() => {
@@ -102,7 +104,7 @@ export const DataTableView: React.FC<DataTableViewProps> = ({ dataset, onExportC
               }`}
             >
               <RefreshCw className="h-3.5 w-3.5 text-amber-400" />
-              Raw Uploaded State ({dataset.rawRows.length})
+              Original File Before Cleaning ({dataset.rawRows.length})
             </button>
           </div>
         </div>

@@ -40,6 +40,169 @@ const CANDIDATE_MODELS = [
   "gemini-3.8-flash",
 ];
 
+// Groq High-Speed LLM Inference integration
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+
+let cachedGroqModels: string[] | null = null;
+let lastGroqModelFetch = 0;
+
+async function getAvailableGroqChatModels(): Promise<string[]> {
+  const now = Date.now();
+  if (cachedGroqModels && now - lastGroqModelFetch < 30 * 60 * 1000) {
+    return cachedGroqModels;
+  }
+
+  const preferredOrder = [
+    "groq/compound-mini",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "groq/compound",
+  ];
+
+  if (!GROQ_API_KEY) return preferredOrder;
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      const ids: string[] = (data?.data || [])
+        .map((m: any) => m.id)
+        .filter((id: string) => typeof id === "string" && !id.includes("whisper") && !id.includes("guard"));
+
+      const sorted = preferredOrder.filter((m) => ids.includes(m));
+      for (const id of ids) {
+        if (!sorted.includes(id)) {
+          sorted.push(id);
+        }
+      }
+      if (sorted.length > 0) {
+        cachedGroqModels = sorted;
+        lastGroqModelFetch = now;
+        return sorted;
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not query Groq models list:", err?.message || err);
+  }
+
+  return preferredOrder;
+}
+
+function cleanGroqText(text: string): string {
+  if (!text) return "";
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  if (cleaned.includes("**Answer") || cleaned.includes("### Answer")) {
+    const answerMatch = cleaned.match(/(?:\*\*Answer.*?\*\*|### Answer[\s\S]*?)\n+([\s\S]+)$/i);
+    if (answerMatch && answerMatch[1]) {
+      cleaned = answerMatch[1].trim();
+    }
+  }
+  if (cleaned.startsWith("```") && cleaned.endsWith("```")) {
+    cleaned = cleaned.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
+  }
+  return cleaned;
+}
+
+async function callGroqChat(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ text: string; modelUsed: string } | null> {
+  if (!GROQ_API_KEY) return null;
+
+  const candidateModels = await getAvailableGroqChatModels();
+
+  for (const model of candidateModels) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 450,
+        }),
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const data = (await response.json()) as any;
+      const content = data?.choices?.[0]?.message?.content;
+      if (content && typeof content === "string" && content.trim().length > 0) {
+        const cleaned = cleanGroqText(content);
+        if (cleaned.length > 0) {
+          return { text: cleaned, modelUsed: `Groq (${model})` };
+        }
+      }
+    } catch {
+      // try next candidate model
+    }
+  }
+
+  return null;
+}
+
+async function callGroqJson(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ data: any; modelUsed: string } | null> {
+  if (!GROQ_API_KEY) return null;
+
+  const jsonCandidateModels = [
+    "groq/compound-mini",
+    "openai/gpt-oss-120b",
+    "groq/compound",
+  ];
+
+  for (const model of jsonCandidateModels) {
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_tokens: 700,
+        }),
+      });
+
+      if (!response.ok) continue;
+
+      const data = (await response.json()) as any;
+      const content = data?.choices?.[0]?.message?.content;
+      if (content) {
+        const cleaned = cleanGroqText(content);
+        const parsed = JSON.parse(cleaned);
+        if (parsed.executiveHeadline || parsed.narrative) {
+          return { data: parsed, modelUsed: `Groq (${model})` };
+        }
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return null;
+}
+
 async function callGeminiWithFallback(
   ai: GoogleGenAI,
   prompt: string,
@@ -191,17 +354,6 @@ app.post("/api/analyze-summary", async (req, res) => {
       return res.status(400).json({ error: "datasetProfile is required" });
     }
 
-    const ai = getGenAI();
-    if (!ai) {
-      const fallback = buildServerFallbackSummary(
-        datasetProfile,
-        cleaningAudit,
-        mlInsights,
-        sampleRows || []
-      );
-      return res.json(fallback);
-    }
-
     const prompt = `
 You are the Automated Insight Analyst — an expert data scientist and executive business advisor.
 Analyze the following dataset metadata, automated cleaning audit, and machine learning results:
@@ -226,40 +378,59 @@ Statistical & Machine Learning Findings:
 Sample Records (Cleaned):
 ${JSON.stringify((sampleRows || []).slice(0, 3), null, 2)}
 
-Provide a concise, high-impact, plain-language executive summary.
-Strict requirements:
-1. "executiveHeadline": A single punchy, high-level takeaway sentence explaining what this dataset reveals.
-2. "narrative": 2 crisp paragraphs translating the technical data into practical real-world insight, explaining major patterns, segment differences, and risk/opportunity drivers.
-3. "keyFindings": An array of exactly 4 clear bullet points (title + 1-sentence finding).
-4. "actionableRecommendations": An array of 3 concrete, strategic next steps.
-5. Return strictly valid JSON with keys: "executiveHeadline", "narrative", "keyFindings", "actionableRecommendations". Do NOT include markdown code blocks.
+Provide a concise, high-impact, plain-language executive summary designed so that ANYONE from a non-technical background can immediately understand the findings and what actions to take.
+Strict rules:
+1. Avoid technical and statistical jargon (do NOT use terms like "parametric dispersion", "covariance", "eigenvalues", "imputation heuristics").
+2. Use clear, everyday business words like "connected metrics", "customer groups", "typical middle range", and "standout records".
+3. "executiveHeadline": A single punchy, clear takeaway sentence explaining what this dataset reveals in simple language.
+4. "narrative": 2 crisp, friendly paragraphs translating the numbers into practical real-world stories, explaining major patterns, group differences, and opportunities.
+5. "keyFindings": An array of exactly 4 clear bullet points (title + 1-sentence finding in everyday English).
+6. "actionableRecommendations": An array of 3 concrete, strategic next steps any team can execute immediately.
+7. Return strictly valid JSON with keys: "executiveHeadline", "narrative", "keyFindings", "actionableRecommendations". Do NOT include markdown code blocks.
 `;
 
-    const geminiResult = await callGeminiWithFallback(ai, prompt, {
-      responseMimeType: "application/json",
-      temperature: 0.2,
-    });
+    // 1. Try Groq high-speed LLM first if API key is present
+    const groqJsonResult = await callGroqJson(
+      "You are a Senior Executive Data Analyst and Business Strategy Expert. Return strictly valid JSON with no markdown formatting.",
+      prompt
+    );
+    if (groqJsonResult && groqJsonResult.data) {
+      return res.json({
+        source: groqJsonResult.modelUsed,
+        modelUsed: groqJsonResult.modelUsed,
+        ...groqJsonResult.data,
+      });
+    }
 
-    if (geminiResult && geminiResult.text) {
-      try {
-        const parsed = JSON.parse(geminiResult.text);
-        return res.json({
-          source: "gemini",
-          modelUsed: geminiResult.modelUsed,
-          ...parsed,
-        });
-      } catch {
-        return res.json({
-          source: "gemini_raw",
-          executiveHeadline: "Automated Data Analysis Completed",
-          narrative: geminiResult.text,
-          keyFindings: [],
-          actionableRecommendations: [],
-        });
+    // 2. Try Gemini if configured
+    const ai = getGenAI();
+    if (ai) {
+      const geminiResult = await callGeminiWithFallback(ai, prompt, {
+        responseMimeType: "application/json",
+        temperature: 0.2,
+      });
+
+      if (geminiResult && geminiResult.text) {
+        try {
+          const parsed = JSON.parse(geminiResult.text);
+          return res.json({
+            source: "gemini",
+            modelUsed: geminiResult.modelUsed,
+            ...parsed,
+          });
+        } catch {
+          return res.json({
+            source: "gemini_raw",
+            executiveHeadline: "Automated Data Analysis Completed",
+            narrative: geminiResult.text,
+            keyFindings: [],
+            actionableRecommendations: [],
+          });
+        }
       }
     }
 
-    // Graceful synthesis fallback if model API is experiencing temporary high demand (503)
+    // 3. Graceful synthesis fallback if model API is experiencing temporary high demand (503)
     const fallback = buildServerFallbackSummary(
       datasetProfile,
       cleaningAudit,
@@ -288,13 +459,37 @@ app.post("/api/ask-data", async (req, res) => {
       return res.status(400).json({ error: "question is required" });
     }
 
-    const ai = getGenAI();
-    if (!ai) {
-      const answer = buildServerFallbackAnswer(question, datasetProfile, mlInsights);
-      return res.json({ answer });
+    // 1. Try Groq high-speed LLM first with user API key
+    const systemPrompt = `You are the interactive Plain-English Data Analyst assistant.
+Answer the user's question directly, accurately, and concisely based strictly on the provided dataset profile and statistical outputs.
+Explain any numbers or metrics in practical real-world terms (using everyday business analogies). Keep it within 2-4 conversational, friendly, highly readable sentences. Avoid technical jargon.`;
+
+    const userPrompt = `Dataset Profile:
+- Name: ${datasetProfile?.datasetName || "Current Dataset"}
+- Rows: ${datasetProfile?.totalRows}, Cleaned: ${datasetProfile?.cleanedRows}
+- Health Score: ${datasetProfile?.healthScore || 100}%
+- Columns: ${JSON.stringify(datasetProfile?.columns || [])}
+- Numeric Stats: ${JSON.stringify(datasetProfile?.numericSummaries || {})}
+- Categorical Distributions: ${JSON.stringify(datasetProfile?.categoryTopCounts || {})}
+- Discovered Groups (Clusters): ${JSON.stringify(mlInsights?.clusters || [])}
+- Discovered Connections (Correlations): ${JSON.stringify(mlInsights?.correlations || [])}
+- Unusual / Standout Records: ${mlInsights?.outlierCount || 0} flagged
+- Sample Rows: ${JSON.stringify((sampleRows || []).slice(0, 5))}
+
+User Question: "${question}"`;
+
+    const groqResult = await callGroqChat(systemPrompt, userPrompt);
+    if (groqResult && groqResult.text) {
+      return res.json({
+        answer: groqResult.text,
+        source: groqResult.modelUsed,
+      });
     }
 
-    const prompt = `
+    // 2. Try Gemini if configured
+    const ai = getGenAI();
+    if (ai) {
+      const prompt = `
 You are the interactive Automated Insight Analyst assistant.
 Answer the user's question directly, accurately, and concisely based strictly on this dataset and its ML outputs.
 
@@ -310,24 +505,29 @@ Dataset Profile:
 
 User Question: "${question}"
 
-Provide a direct, factual answer highlighting specific numbers, percentages, or trends from the dataset. Keep it within 2-4 sentences.
+Provide a direct, friendly, and factual answer in plain, simple English suitable for someone with NO technical or data science background. Explain any numbers or metrics in practical real-world terms (e.g., using everyday business analogies). Keep it within 2-4 conversational, highly readable sentences.
 `;
 
-    const geminiResult = await callGeminiWithFallback(ai, prompt, {
-      temperature: 0.2,
-    });
+      const geminiResult = await callGeminiWithFallback(ai, prompt, {
+        temperature: 0.2,
+      });
 
-    if (geminiResult && geminiResult.text) {
-      return res.json({ answer: geminiResult.text });
+      if (geminiResult && geminiResult.text) {
+        return res.json({
+          answer: geminiResult.text,
+          source: `Gemini (${geminiResult.modelUsed})`,
+        });
+      }
     }
 
+    // 3. Robust algorithmic fallback
     const answer = buildServerFallbackAnswer(question, datasetProfile, mlInsights);
-    return res.json({ answer });
+    return res.json({ answer, source: "Computed Evidence Engine" });
   } catch (error: any) {
     console.warn("Ask data fallback engaged:", error?.message || error);
     const { question, datasetProfile, mlInsights } = req.body || {};
     const answer = buildServerFallbackAnswer(question, datasetProfile, mlInsights);
-    return res.json({ answer });
+    return res.json({ answer, source: "Computed Evidence Engine" });
   }
 });
 

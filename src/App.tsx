@@ -10,6 +10,8 @@ import { DataTableView } from "./components/DataTableView";
 import { FloatingDataChatbot } from "./components/FloatingDataChatbot";
 import { ProcessingStepper } from "./components/ProcessingStepper";
 import { TechnicalDetailsAccordion } from "./components/TechnicalDetailsAccordion";
+import { PlainEnglishGuideModal } from "./components/PlainEnglishGuideModal";
+import { ExecutiveReportModal } from "./components/ExecutiveReportModal";
 import { PRESET_DATASETS } from "./services/sampleDatasets";
 import { processRawDataset } from "./services/pipeline";
 import { ProcessedDataset } from "./types";
@@ -23,6 +25,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "audit" | "ml" | "data">("dashboard");
   const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const [isChatbotOpen, setIsChatbotOpen] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [isEasyMode, setIsEasyMode] = useState<boolean>(true); // Plain English mode by default
   const [currentProcessingName, setCurrentProcessingName] = useState<string>(PRESET_DATASETS[0].name);
 
   // Load preset dataset on mount or selection
@@ -93,55 +98,10 @@ export default function App() {
     document.body.removeChild(link);
   };
 
-  // Export executive insight report
+  // Open formatted executive report & PDF download modal
   const handleExportReport = () => {
     if (!processedDataset) return;
-    const reportText = `# Automated Insight Analyst Executive Report
-Dataset: ${processedDataset.name}
-Generated: ${new Date().toLocaleString()}
-
-## Executive Headline
-${processedDataset.summary.executiveHeadline}
-
-## Narrative
-${processedDataset.summary.narrative}
-
-## Quality Health & Cleaning Audit
-- Initial Raw Health Score: ${processedDataset.audit.rawHealthScore}%
-- Cleaned Health Score: ${processedDataset.audit.cleanedHealthScore}%
-- Raw Records: ${processedDataset.rawRows.length}
-- Validated Records: ${processedDataset.cleanedRows.length}
-- Duplicates Removed: ${processedDataset.audit.duplicatesRemoved}
-- Missing Values Imputed: ${processedDataset.audit.missingValuesImputed}
-- Formats Normalized: ${processedDataset.audit.formatsNormalized}
-
-## Machine Learning Findings
-- Primary Correlation: ${
-      processedDataset.ml.correlations[0]
-        ? `${processedDataset.ml.correlations[0].colA} x ${processedDataset.ml.correlations[0].colB} (r = ${processedDataset.ml.correlations[0].coefficient})`
-        : "None"
-    }
-- Clusters Identified: ${processedDataset.ml.clusters.length}
-- Anomalies Flagged: ${processedDataset.ml.outlierCount} records (${processedDataset.ml.outlierRatio})
-
-## Key Findings
-${processedDataset.summary.keyFindings.map((f, i) => `${i + 1}. **${f.title}**: ${f.finding}`).join("\n")}
-
-## Actionable Recommendations
-${processedDataset.summary.actionableRecommendations.map((r, i) => `${i + 1}. ${r}`).join("\n")}
-`;
-
-    const blob = new Blob([reportText], { type: "text/markdown;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute(
-      "download",
-      `${processedDataset.name.toLowerCase().replace(/\s+/g, "_")}_insight_report.md`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setIsReportModalOpen(true);
   };
 
   return (
@@ -153,6 +113,9 @@ ${processedDataset.summary.actionableRecommendations.map((r, i) => `${i + 1}. ${
         onOpenUpload={() => setIsUploadModalOpen(true)}
         onExportCsv={handleExportCsv}
         onExportReport={handleExportReport}
+        onOpenGuide={() => setIsGuideOpen(true)}
+        isEasyMode={isEasyMode}
+        onToggleEasyMode={() => setIsEasyMode(!isEasyMode)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         healthScore={processedDataset?.audit.cleanedHealthScore ?? 100}
@@ -178,7 +141,7 @@ ${processedDataset.summary.actionableRecommendations.map((r, i) => `${i + 1}. ${
           </div>
         )}
 
-        {/* Loading State / Transparent Processing Stepper (Screen 2) */}
+        {/* Loading State / Transparent Processing Stepper */}
         {isProcessing && (
           <ProcessingStepper datasetName={currentProcessingName} />
         )}
@@ -190,28 +153,35 @@ ${processedDataset.summary.actionableRecommendations.map((r, i) => `${i + 1}. ${
             <ExecutiveSummarySection
               summary={processedDataset.summary}
               dataset={processedDataset}
+              isEasyMode={isEasyMode}
               onOpenChatbot={() => setIsChatbotOpen(true)}
+              onOpenGuide={() => setIsGuideOpen(true)}
+              onExportReport={handleExportReport}
             />
 
             {/* Tab Views */}
             {activeTab === "dashboard" && (
-              <DashboardView dataset={processedDataset} />
+              <DashboardView
+                dataset={processedDataset}
+                isEasyMode={isEasyMode}
+                onExportReport={handleExportReport}
+              />
             )}
 
             {activeTab === "audit" && (
-              <CleaningAuditView dataset={processedDataset} />
+              <CleaningAuditView dataset={processedDataset} isEasyMode={isEasyMode} />
             )}
 
             {activeTab === "ml" && (
-              <MachineLearningView dataset={processedDataset} />
+              <MachineLearningView dataset={processedDataset} isEasyMode={isEasyMode} />
             )}
 
             {activeTab === "data" && (
               <DataTableView dataset={processedDataset} onExportCsv={handleExportCsv} />
             )}
 
-            {/* Collapsed Technical Details Accordion (Screen 17 & SRS) */}
-            <TechnicalDetailsAccordion dataset={processedDataset} />
+            {/* Collapsed Technical Details Accordion */}
+            <TechnicalDetailsAccordion dataset={processedDataset} isEasyMode={isEasyMode} />
           </div>
         )}
       </main>
@@ -224,12 +194,28 @@ ${processedDataset.summary.actionableRecommendations.map((r, i) => `${i + 1}. ${
         isProcessing={isProcessing}
       />
 
-      {/* Floating Bottom-Right Chatbot (Floating Action Button + Window) */}
+      {/* Floating Bottom-Right Chatbot */}
       <FloatingDataChatbot
         dataset={processedDataset}
         isOpen={isChatbotOpen}
         onToggle={() => setIsChatbotOpen(!isChatbotOpen)}
       />
+
+      {/* Beginner & Plain-English Guide Modal */}
+      <PlainEnglishGuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
+
+      {/* Formatted Executive Report & PDF Download Modal */}
+      {processedDataset && (
+        <ExecutiveReportModal
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+          dataset={processedDataset}
+          isEasyMode={isEasyMode}
+        />
+      )}
     </div>
   );
 }

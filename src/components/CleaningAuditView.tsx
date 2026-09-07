@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -11,15 +11,38 @@ import {
   ArrowRight,
   Sparkles,
   Info,
+  HelpCircle,
+  FileCheck,
+  Filter,
 } from "lucide-react";
 import { ColumnProfile, ColumnType, ProcessedDataset } from "../types";
 
 interface CleaningAuditViewProps {
   dataset: ProcessedDataset;
+  isEasyMode?: boolean;
 }
 
-export const CleaningAuditView: React.FC<CleaningAuditViewProps> = ({ dataset }) => {
+export const CleaningAuditView: React.FC<CleaningAuditViewProps> = ({
+  dataset,
+  isEasyMode = true,
+}) => {
   const { audit, columns, rawRows, cleanedRows } = dataset;
+  const [showExplanation, setShowExplanation] = useState(false);
+
+  const getTypeFriendlyLabel = (type: ColumnType) => {
+    switch (type) {
+      case "numeric":
+        return { label: isEasyMode ? "Numbers (Amounts)" : "Numeric", desc: "Calculable values (revenue, age, score)" };
+      case "date":
+        return { label: isEasyMode ? "Dates (Timeline)" : "Date", desc: "Calendar dates and time periods" };
+      case "categorical":
+        return { label: isEasyMode ? "Categories (Labels)" : "Categorical", desc: "Names, departments, statuses" };
+      case "id":
+        return { label: isEasyMode ? "Unique ID Code" : "Identifier", desc: "Codes like #1043 or SKU" };
+      case "boolean":
+        return { label: isEasyMode ? "Yes / No Toggle" : "Boolean", desc: "True/False or Yes/No flags" };
+    }
+  };
 
   const getTypeIcon = (type: ColumnType) => {
     switch (type) {
@@ -53,39 +76,64 @@ export const CleaningAuditView: React.FC<CleaningAuditViewProps> = ({ dataset })
 
   return (
     <div className="space-y-6">
-      {/* SECTION 01: DATA HYGIENE */}
+      {/* DATA HEALTH & QUALITY OVERVIEW */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <span className="text-indigo-600 font-bold">01</span> DATA HYGIENE
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                Data Quality & Clean-up Report
+              </h3>
+              <button
+                onClick={() => setShowExplanation(!showExplanation)}
+                className="text-[11px] text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-semibold"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                <span>{showExplanation ? "Hide Explanation" : "What is this?"}</span>
+              </button>
+            </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Autonomous cleaning pipeline resolving nulls, duplicate keys, and data discrepancies.
+              Autonomous cleaning pipeline resolving missing blanks, removing duplicates, and standardizing values.
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border border-emerald-100 text-[11px] font-semibold">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-            Pipeline Active
+          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border border-emerald-100 text-[11px] font-semibold self-start sm:self-auto">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <span>100% Reliable for Analysis</span>
           </div>
         </div>
 
-        {/* Health Score & Hygiene Metric Grid */}
+        {/* Optional Beginner Explanation Banner */}
+        {showExplanation && (
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 text-xs text-slate-700 space-y-1.5">
+            <p className="font-bold text-indigo-950 flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+              Why data cleaning matters:
+            </p>
+            <p className="text-slate-600 leading-relaxed text-[11px]">
+              Raw spreadsheets often contain accidental duplicate entries, missing numbers, and conflicting text formats
+              (like mixing &ldquo;$1,000&rdquo; with &ldquo;1000&rdquo;). This pipeline automatically cleans these issues
+              without changing your original file, ensuring that your reports, averages, and charts are completely accurate.
+            </p>
+          </div>
+        )}
+
+        {/* Before vs After Clean-up Cards */}
         <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Health Score Evolution */}
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex flex-col justify-between">
+          {/* Quality Health Score Evolution */}
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200/70 flex flex-col justify-between">
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Quality Health Score
+                Overall Data Health Score
               </p>
               <div className="mt-2 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-semibold">RAW</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">ORIGINAL FILE</span>
                   <p className="text-xl font-bold text-slate-700">{audit.rawHealthScore}%</p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-indigo-400" />
                 <div>
-                  <span className="text-[10px] text-emerald-600 font-semibold">CLEANED</span>
+                  <span className="text-[10px] text-emerald-600 font-semibold">AFTER CLEANING</span>
                   <p className="text-2xl font-extrabold text-emerald-600">
                     {audit.cleanedHealthScore}%
                   </p>
@@ -98,95 +146,113 @@ export const CleaningAuditView: React.FC<CleaningAuditViewProps> = ({ dataset })
                 ></div>
               </div>
             </div>
-            <p className="mt-2 text-[10px] text-slate-500 leading-tight">
-              100% column completeness, validated types, zero unresolved nulls.
+            <p className="mt-3 text-[11px] text-slate-600 leading-tight">
+              {audit.cleanedHealthScore === 100
+                ? "Perfect quality: zero missing blanks and no duplicate records remaining."
+                : "Great quality: major issues normalized and verified."}
             </p>
           </div>
 
-          {/* Cleaning Interventions (Sleek Theme Item Format) */}
+          {/* Three Interventions in Plain English */}
           <div className="space-y-2 md:col-span-2">
-            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-              <div>
-                <p className="text-xs font-semibold text-slate-800">Missing Values Imputation</p>
-                <p className="text-[10px] text-slate-500">
-                  {audit.missingValuesImputed > 0
-                    ? `${audit.missingValuesImputed} null cells imputed via Median / Mode heuristic`
-                    : "Zero null values detected across records"}
-                </p>
+            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
+                  ✓
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">
+                    {isEasyMode ? "Blank Cells Filled In (Imputation)" : "Missing Values Imputation"}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {audit.missingValuesImputed > 0
+                      ? `Repaired ${audit.missingValuesImputed} blank cells by filling in the typical average value so charts and math calculations don't break.`
+                      : "No missing or blank cells were found in your rows."}
+                  </p>
+                </div>
               </div>
-              <span className="text-emerald-500 font-bold text-sm">✓</span>
+              <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded shrink-0 ml-2 border border-emerald-100">
+                {audit.missingValuesImputed > 0 ? `${audit.missingValuesImputed} Fixed` : "All Clean"}
+              </span>
             </div>
 
-            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-              <div>
-                <p className="text-xs font-semibold text-slate-800">Duplicate Key Suppression</p>
-                <p className="text-[10px] text-slate-500">
-                  {audit.duplicatesRemoved > 0
-                    ? `${audit.duplicatesRemoved} redundant records removed to prevent sample bias`
-                    : "Zero duplicate records found"}
-                </p>
+            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
+                  ✓
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">
+                    {isEasyMode ? "Duplicate Rows Removed" : "Duplicate Key Suppression"}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {audit.duplicatesRemoved > 0
+                      ? `Found and removed ${audit.duplicatesRemoved} identical duplicate rows so totals aren't accidentally counted twice.`
+                      : "Zero duplicate entries found in your file."}
+                  </p>
+                </div>
               </div>
-              <span className="text-emerald-500 font-bold text-sm">✓</span>
+              <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded shrink-0 ml-2 border border-emerald-100">
+                {audit.duplicatesRemoved > 0 ? `${audit.duplicatesRemoved} Dropped` : "No Duplicates"}
+              </span>
             </div>
 
-            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-              <div>
-                <p className="text-xs font-semibold text-slate-800">Format Normalization</p>
-                <p className="text-[10px] text-slate-500">
-                  {audit.formatsNormalized} format transformations (ISO-8601 dates, currency stripping, whitespace trim)
-                </p>
+            <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold">
+                  ✓
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">
+                    {isEasyMode ? "Formatting & Numbers Standardized" : "Format Normalization"}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    {audit.formatsNormalized} adjustments made: stripped currency symbols ($/€), cleaned commas, trimmed whitespace, and unified date formats.
+                  </p>
+                </div>
               </div>
-              <span className="text-emerald-500 font-bold text-sm">✓</span>
+              <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded shrink-0 ml-2 border border-indigo-100">
+                Standardized
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* SECTION 02: SCHEMA DETECTION */}
+      {/* SCHEMA & COLUMN DETAILS */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <span className="text-indigo-600 font-bold">02</span> SCHEMA DETECTION
+              <Layers className="h-4 w-4 text-indigo-600" />
+              Column Types & Profiles
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Autonomous type inference evaluated through formatting rules, regexes, and cardinality.
+              The system automatically detected the purpose of each column (dates, amounts, categories).
             </p>
           </div>
-          <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md self-start sm:self-auto">
-            {columns.length} ATTRIBUTES DETECTED
+          <span className="text-xs font-semibold bg-slate-100 text-slate-700 px-3 py-1 rounded-lg self-start sm:self-auto">
+            {columns.length} Columns Analyzed
           </span>
         </div>
 
-        {/* Sleek Left-Bordered Schema Cards (Design Reference Pattern) */}
+        {/* Quick Column Category Badges */}
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
           {columns.map((col) => {
-            const getBorderAccent = (type: ColumnType) => {
-              switch (type) {
-                case "numeric":
-                  return "border-indigo-500 bg-indigo-50/40 text-indigo-900";
-                case "date":
-                  return "border-amber-500 bg-amber-50/40 text-amber-900";
-                case "categorical":
-                  return "border-purple-500 bg-purple-50/40 text-purple-900";
-                case "id":
-                  return "border-slate-500 bg-slate-50 text-slate-900";
-                case "boolean":
-                  return "border-rose-500 bg-rose-50/40 text-rose-900";
-              }
-            };
-
+            const friendly = getTypeFriendlyLabel(col.type);
             return (
               <div
                 key={col.name}
-                className={`flex items-center justify-between px-3 py-2 border-l-2 rounded-r-lg ${getBorderAccent(
-                  col.type
-                )}`}
+                className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/70 bg-slate-50/70"
+                title={`${col.name}: ${friendly.desc}`}
               >
-                <span className="text-xs font-mono text-slate-700 uppercase truncate max-w-[130px]" title={col.name}>
-                  {col.name}
-                </span>
-                <span className="text-[10px] font-mono font-bold bg-slate-200/90 text-slate-700 px-1.5 py-0.5 rounded tracking-wider uppercase">
+                <div className="flex items-center gap-2 truncate">
+                  {getTypeIcon(col.type)}
+                  <span className="text-xs font-semibold text-slate-800 truncate" title={col.name}>
+                    {col.name}
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200 shrink-0 ml-1">
                   {col.type}
                 </span>
               </div>
@@ -200,123 +266,77 @@ export const CleaningAuditView: React.FC<CleaningAuditViewProps> = ({ dataset })
             <thead className="bg-slate-50 text-slate-500 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-100">
               <tr>
                 <th className="py-3 px-4">Column Name</th>
-                <th className="py-3 px-4">Inferred Type</th>
+                <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4">Confidence</th>
-                <th className="py-3 px-4">Missing (Raw)</th>
-                <th className="py-3 px-4">Distinct</th>
-                <th className="py-3 px-4">Distribution & Parameters</th>
+                <th className="py-3 px-4">{isEasyMode ? "Missing Cells" : "Missing (Raw)"}</th>
+                <th className="py-3 px-4">{isEasyMode ? "Unique Values" : "Distinct"}</th>
+                <th className="py-3 px-4">{isEasyMode ? "Summary & Typical Values" : "Distribution & Parameters"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {columns.map((col) => (
-                <tr key={col.name} className="hover:bg-slate-50/70 transition">
-                  <td className="py-3 px-4 font-mono font-semibold text-slate-900">{col.name}</td>
-                  <td className="py-3 px-4">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold border ${getTypeBadgeClass(
-                        col.type
-                      )}`}
-                    >
-                      {getTypeIcon(col.type)}
-                      <span className="capitalize">{col.type}</span>
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                    {Math.round(col.inferredConfidence * 100)}%
-                  </td>
-                  <td className="py-3 px-4">
-                    {col.nullCount > 0 ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-amber-700 font-semibold border border-amber-200/60">
-                        {col.nullCount} ({Math.round((col.nullCount / col.totalCount) * 100)}%)
+              {columns.map((col) => {
+                const friendly = getTypeFriendlyLabel(col.type);
+                return (
+                  <tr key={col.name} className="hover:bg-slate-50/70 transition">
+                    <td className="py-3 px-4 font-semibold text-slate-900">{col.name}</td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold border ${getTypeBadgeClass(
+                          col.type
+                        )}`}
+                      >
+                        {getTypeIcon(col.type)}
+                        {friendly.label}
                       </span>
-                    ) : (
-                      <span className="text-emerald-600 font-medium flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> 0 nulls
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 font-medium text-slate-700">
-                    {col.distinctCount} unique
-                  </td>
-                  <td className="py-3 px-4 text-slate-600">
-                    {col.type === "numeric" && (
-                      <div className="flex flex-wrap gap-2 text-[11px]">
-                        <span>
-                          <strong className="text-slate-800">Mean:</strong> {col.mean}
+                    </td>
+                    <td className="py-3 px-4 font-medium text-slate-600">
+                      {Math.round(col.confidence * 100)}%
+                    </td>
+                    <td className="py-3 px-4">
+                      {col.nullCount > 0 ? (
+                        <span className="text-amber-600 font-semibold">
+                          {col.nullCount} ({Math.round(col.nullRatio * 100)}%)
                         </span>
-                        <span>
-                          <strong className="text-slate-800">Median:</strong> {col.median}
-                        </span>
-                        <span>
-                          <strong className="text-slate-800">Range:</strong> [{col.min} - {col.max}]
-                        </span>
-                        <span>
-                          <strong className="text-slate-800">IQR:</strong> {col.iqr}
-                        </span>
-                      </div>
-                    )}
-                    {col.type === "categorical" && (
-                      <div className="flex flex-wrap gap-1 text-[11px]">
-                        {(col.topCategories || []).slice(0, 3).map((c, i) => (
-                          <span
-                            key={i}
-                            className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700"
-                          >
-                            {c.value} ({c.percentage}%)
+                      ) : (
+                        <span className="text-emerald-600 font-semibold">0 (Complete)</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 font-medium text-slate-700">
+                      {col.distinctCount.toLocaleString()} {isEasyMode ? "different items" : "unique"}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600">
+                      {col.type === "numeric" && col.stats ? (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="bg-slate-100 px-2 py-0.5 rounded font-medium text-slate-700">
+                            Avg: <strong>{col.stats.mean.toLocaleString()}</strong>
                           </span>
-                        ))}
-                      </div>
-                    )}
-                    {col.type === "date" && (
-                      <div className="text-[11px] text-slate-600">
-                        Span: <span className="font-medium text-slate-800">{col.minDate}</span> to{" "}
-                        <span className="font-medium text-slate-800">{col.maxDate}</span>
-                      </div>
-                    )}
-                    {(col.type === "id" || col.type === "boolean") && (
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        Samples: {col.sampleValues.slice(0, 3).join(", ")}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                          <span className="bg-slate-100 px-2 py-0.5 rounded font-medium text-slate-700">
+                            Middle: <strong>{col.stats.median.toLocaleString()}</strong>
+                          </span>
+                          <span className="text-slate-400">
+                            Range: {col.stats.min.toLocaleString()} to {col.stats.max.toLocaleString()}
+                          </span>
+                        </div>
+                      ) : col.topValues ? (
+                        <div className="flex flex-wrap gap-1 text-[11px]">
+                          {col.topValues.slice(0, 3).map((tv) => (
+                            <span
+                              key={tv.value}
+                              className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium"
+                            >
+                              {tv.value} ({tv.count})
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic">Uniform data</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* SECTION 03: DETAILED AUDIT TRACE */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-          <span className="text-indigo-600 font-bold">03</span> AUDIT LOG TRACE
-        </h3>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Chronological record of every imputation, key validation, and format standardization.
-        </p>
-
-        <div className="mt-4 space-y-2">
-          {audit.actions.map((action, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 border border-slate-100"
-            >
-              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white font-bold text-[10px]">
-                {i + 1}
-              </div>
-              <div className="flex-1">
-                <span className="font-semibold capitalize text-slate-900">
-                  {action.type.replace(/_/g, " ")}:
-                </span>{" "}
-                <span className="text-slate-600">{action.details}</span>
-              </div>
-            </div>
-          ))}
-          {audit.actions.length === 0 && (
-            <div className="p-4 text-center text-xs text-slate-400">
-              No cleaning interventions were required for this pristine dataset.
-            </div>
-          )}
         </div>
       </div>
     </div>
